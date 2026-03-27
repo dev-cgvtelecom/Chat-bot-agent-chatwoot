@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Test Chatwoot Bot</title>
+</head>
+<body>
+
+    <h1>Test Chatwoot Bot 🚀</h1>
+    <p>Mở góc phải dưới để chat thử bot</p>
+
+    <!-- Chatwoot Widget -->
+    <script>
+      (function(d,t) {
+        var BASE_URL="https://devchat.telesip.vn";
+        var g=d.createElement(t),s=d.getElementsByTagName(t)[0];
+        g.src=BASE_URL+"/packs/js/sdk.js";
+        g.async = true;
+        s.parentNode.insertBefore(g,s);
+        g.onload=function(){
+          window.chatwootSDK.run({
+            websiteToken: 'c4RWQ2z5KgxjZ88Hmx7bvKSA',
+            baseUrl: BASE_URL
+          });
+        }
+      })(document,"script");
+    </script>
+
+</body>
+</html>
