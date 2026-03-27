@@ -3,12 +3,25 @@ import re
 
 import requests
 from fastapi import FastAPI, Request
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
 
 API_URL = os.getenv("CHATWOOT_API_URL", "https://devchat.telesip.vn").rstrip("/")
 API_TOKEN = os.getenv("CHATWOOT_API_TOKEN", "").strip()
 ACCOUNT_ID = os.getenv("CHATWOOT_ACCOUNT_ID", "1").strip()
+
+
+@app.on_event("startup")
+def startup_log():
+    token_preview = f"{API_TOKEN[:6]}...{API_TOKEN[-4:]}" if len(API_TOKEN) > 10 else "(short-or-empty)"
+    print("==== STARTUP CONFIG ====")
+    print("CHATWOOT_API_URL:", API_URL)
+    print("CHATWOOT_ACCOUNT_ID:", ACCOUNT_ID)
+    print("TOKEN_LEN:", len(API_TOKEN))
+    print("TOKEN_PREVIEW:", token_preview)
 
 # ========================
 # 🔧 CLEAN HTML
@@ -21,13 +34,13 @@ def clean_html(raw_html):
 # 🔥 SEND REPLY (PRIVATE API)
 # ========================
 def _build_headers():
-    # Keep compatibility across Chatwoot deployments.
     headers = {
         "Content-Type": "application/json",
     }
     if API_TOKEN:
+        # Chatwoot REST API expects api_access_token.
+        # Avoid Authorization header because some deployments handle it differently.
         headers["api_access_token"] = API_TOKEN
-        headers["Authorization"] = f"Bearer {API_TOKEN}"
     return headers
 
 
@@ -52,6 +65,7 @@ def send_reply(conversation_id, message):
             print(
                 "AUTH ERROR: CHATWOOT_API_TOKEN không hợp lệ hoặc không có quyền trong account."
             )
+            check_chatwoot_auth()
         elif res.status_code == 404:
             print(
                 "NOT FOUND: CHATWOOT_ACCOUNT_ID hoặc conversation_id không đúng với token hiện tại."
@@ -137,3 +151,37 @@ def health():
         "chatwoot_account_id": ACCOUNT_ID,
         "has_token": bool(API_TOKEN),
     }
+
+
+@app.get("/debug/auth")
+def debug_auth():
+    if not API_TOKEN:
+        return {"ok": False, "error": "missing_api_token"}
+    url = f"{API_URL}/api/v1/profile"
+    try:
+        res = requests.get(url, headers=_build_headers(), timeout=10)
+        return {
+            "ok": res.status_code == 200,
+            "profile_status": res.status_code,
+            "profile_response": res.text[:300],
+            "token_len": len(API_TOKEN),
+            "token_preview": f"{API_TOKEN[:6]}...{API_TOKEN[-4:]}" if len(API_TOKEN) > 10 else "(short-or-empty)",
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def check_chatwoot_auth():
+    if not API_TOKEN:
+        print("AUTH CHECK: thiếu CHATWOOT_API_TOKEN")
+        return
+    url = f"{API_URL}/api/v1/profile"
+    headers = _build_headers()
+    try:
+        res = requests.get(url, headers=headers, timeout=10)
+        print("==== AUTH CHECK ====")
+        print("PROFILE URL:", url)
+        print("PROFILE STATUS:", res.status_code)
+        print("PROFILE RESPONSE:", res.text[:500])
+    except Exception as e:
+        print("AUTH CHECK ERROR:", str(e))
