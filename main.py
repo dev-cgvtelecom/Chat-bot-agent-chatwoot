@@ -1,5 +1,6 @@
 import os
 import re
+from contextlib import asynccontextmanager
 
 import requests
 from fastapi import FastAPI, Request
@@ -7,14 +8,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI()
-
 API_URL = os.getenv("CHATWOOT_API_URL", "https://devchat.telesip.vn").rstrip("/")
 API_TOKEN = os.getenv("CHATWOOT_API_TOKEN", "").strip()
 ACCOUNT_ID = os.getenv("CHATWOOT_ACCOUNT_ID", "1").strip()
 
 
-@app.on_event("startup")
 def startup_log():
     token_preview = f"{API_TOKEN[:6]}...{API_TOKEN[-4:]}" if len(API_TOKEN) > 10 else "(short-or-empty)"
     print("==== STARTUP CONFIG ====")
@@ -22,6 +20,15 @@ def startup_log():
     print("CHATWOOT_ACCOUNT_ID:", ACCOUNT_ID)
     print("TOKEN_LEN:", len(API_TOKEN))
     print("TOKEN_PREVIEW:", token_preview)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    startup_log()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 # ========================
 # 🔧 CLEAN HTML
