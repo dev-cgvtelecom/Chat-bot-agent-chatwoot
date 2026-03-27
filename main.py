@@ -1,34 +1,44 @@
-from fastapi import FastAPI, Request
-import requests
+import os
 import re
+
+import requests
+from fastapi import FastAPI, Request
 
 app = FastAPI()
 
-API_URL = "https://devchat.telesip.vn"
-API_TOKEN = "EdPegfJRVotRVCqSav9hcsBT"   # 🔥 thay token thật
-ACCOUNT_ID = 1
+API_URL = os.getenv("CHATWOOT_API_URL", "https://devchat.telesip.vn").rstrip("/")
+API_TOKEN = os.getenv("CHATWOOT_API_TOKEN", "").strip()
+ACCOUNT_ID = os.getenv("CHATWOOT_ACCOUNT_ID", "1").strip()
 
 # ========================
 # 🔧 CLEAN HTML
 # ========================
 def clean_html(raw_html):
-    return re.sub('<.*?>', '', raw_html)
+    return re.sub(r"<.*?>", "", raw_html or "").strip()
 
 
 # ========================
 # 🔥 SEND REPLY (PRIVATE API)
 # ========================
+def _build_headers():
+    # Keep compatibility across Chatwoot deployments.
+    headers = {
+        "Content-Type": "application/json",
+    }
+    if API_TOKEN:
+        headers["api_access_token"] = API_TOKEN
+        headers["Authorization"] = f"Bearer {API_TOKEN}"
+    return headers
+
+
 def send_reply(conversation_id, message):
     url = f"{API_URL}/api/v1/accounts/{ACCOUNT_ID}/conversations/{conversation_id}/messages"
-
-    headers = {
-        "api_access_token": API_TOKEN,
-        "Content-Type": "application/json"
-    }
+    headers = _build_headers()
 
     payload = {
         "content": message,
-        "message_type": 1   # 🔥 QUAN TRỌNG (outgoing)
+        "message_type": "outgoing",
+        "private": False,
     }
 
     try:
@@ -38,6 +48,14 @@ def send_reply(conversation_id, message):
         print("URL:", url)
         print("STATUS:", res.status_code)
         print("RESPONSE:", res.text)
+        if res.status_code == 401:
+            print(
+                "AUTH ERROR: CHATWOOT_API_TOKEN không hợp lệ hoặc không có quyền trong account."
+            )
+        elif res.status_code == 404:
+            print(
+                "NOT FOUND: CHATWOOT_ACCOUNT_ID hoặc conversation_id không đúng với token hiện tại."
+            )
 
     except Exception as e:
         print("ERROR SEND:", str(e))
@@ -53,11 +71,11 @@ async def bot(req: Request):
     print("==== WEBHOOK DATA ====")
     print(data)
 
-    # ❌ bỏ event không cần
+    # Ignore irrelevant webhook events.
     if data.get("event") != "message_created":
         return {"ok": True}
 
-    # ❌ chỉ xử lý tin nhắn user
+    # Process only user incoming messages.
     if data.get("message_type") != "incoming":
         return {"ok": True}
 
@@ -67,7 +85,11 @@ async def bot(req: Request):
     raw_message = data.get("content", "")
     message = clean_html(raw_message)
 
-    conversation_id = data["conversation"]["id"]
+    conversation = data.get("conversation") or {}
+    conversation_id = conversation.get("id")
+    if not conversation_id:
+        print("SKIP: thiếu conversation_id trong webhook payload")
+        return {"ok": True}
 
     print(f"User send: {message}")
     print(f"conversation_id: {conversation_id}")
@@ -98,6 +120,20 @@ async def bot(req: Request):
     # ========================
     # 🚀 GỬI TRẢ LẠI CHATWOOT
     # ========================
+    if not API_TOKEN:
+        print("CONFIG ERROR: chưa thiết lập CHATWOOT_API_TOKEN")
+        return {"ok": False, "error": "missing_api_token"}
+
     send_reply(conversation_id, reply)
 
     return {"ok": True}
+
+
+@app.get("/health")
+def health():
+    return {
+        "ok": True,
+        "chatwoot_api_url": API_URL,
+        "chatwoot_account_id": ACCOUNT_ID,
+        "has_token": bool(API_TOKEN),
+    }
