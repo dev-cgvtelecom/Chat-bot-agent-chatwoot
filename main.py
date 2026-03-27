@@ -46,8 +46,9 @@ def _build_headers():
     }
     if API_TOKEN:
         # Chatwoot REST API expects api_access_token.
-        # Avoid Authorization header because some deployments handle it differently.
+        # Some proxies drop underscore headers; send both variants.
         headers["api_access_token"] = API_TOKEN
+        headers["api-access-token"] = API_TOKEN
     return headers
 
 
